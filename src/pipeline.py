@@ -40,6 +40,8 @@ def filter_products_with_sugar(products):
     Products without it can't be scored against our target.
     """
     return [p for p in products if p.get("nutriments", {}).get("sugars_100g") is not None]
+
+
 def safe_float(value, default=None):
     """
     Try to convert a value to float. Return `default` if it fails.
@@ -48,6 +50,8 @@ def safe_float(value, default=None):
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
 def parse_quantity_grams(raw):
     """
     Extract the leading number from a free-text quantity string like "70 g" or "1.5 L".
@@ -77,6 +81,30 @@ def parse_quantity_grams(raw):
         return None
 
     return safe_float(number_str)
+
+
+def explore_structure(obj, indent=0):
+    """
+    Recursively walk a nested dict/list structure and print the type
+    of every value found, showing how deeply nested the JSON is.
+    Used during Phase 2 to manually inspect the raw product structure.
+    """
+    prefix = "  " * indent
+
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            print(f"{prefix}{key}: {type(value).__name__}")
+            explore_structure(value, indent + 1)
+    elif isinstance(obj, list):
+        print(f"{prefix}[list of {len(obj)} item(s)]")
+        if obj:
+            # Just walk the first item as a representative sample
+            explore_structure(obj[0], indent + 1)
+    else:
+        # Base case: a leaf value (str, int, float, bool, None)
+        pass
+
+
 def scrape_daily_value_sugar():
     """
     Scrape the FDA's official Daily Value for added sugars (in grams)
@@ -106,6 +134,8 @@ def scrape_daily_value_sugar():
     except requests.exceptions.RequestException as e:
         print(f"Scrape failed: {e}, using fallback value.")
         return 50.0
+
+
 def clean_and_engineer(products, daily_value_sugar_g):
     """
     Clean products, impute missing values, and add engineered columns.
@@ -190,6 +220,8 @@ def clean_and_engineer(products, daily_value_sugar_g):
 
     print(f"Cleaned {len(cleaned_records)} records.")
     return cleaned_records
+
+
 def join_with_warehouse_log(records, log_path="data/raw/warehouse_scan_log.csv"):
     """
     Load the warehouse scan log and attach its fields to each cleaned record,
@@ -214,6 +246,8 @@ def join_with_warehouse_log(records, log_path="data/raw/warehouse_scan_log.csv")
     matched = sum(1 for r in records if r["shelf_location"] is not None)
     print(f"Matched {matched} out of {len(records)} records with warehouse log.")
     return records
+
+
 def apply_min_max_scaling(records, field="sugar_pct_dv", new_field="sugar_pct_dv_scaled"):
     """
     Scale a numeric field to the 0-1 range using min-max scaling.
@@ -238,6 +272,8 @@ def apply_min_max_scaling(records, field="sugar_pct_dv", new_field="sugar_pct_dv
 
     print(f"Scaled {field}: min={min_val:.2f}, max={max_val:.2f}")
     return records
+
+
 def validation_check(records):
     """
     For each nutrition_grade, compute the percentage of products
@@ -273,6 +309,8 @@ def write_to_csv(records, output_path="data/processed/clean_data.csv"):
         writer.writerows(records)
 
     print(f"\nWrote {len(records)} records to {output_path}")
+
+
 def main():
     """
     Run the full pipeline end-to-end: fetch, filter, clean, join, scale, validate, save.
@@ -296,27 +334,32 @@ def main():
     Path("data/raw/extracted_ids.txt").write_text("\n".join(barcodes), encoding="utf-8")
     print(f"Extracted {len(barcodes)} unique barcodes.")
 
-    # Step 2: Filter cohort
-    filtered_products = filter_products_with_sugar(products)
-    print(f"Filtered to {len(filtered_products)} products with sugar data.")
+    # Step 2: Explore structure of first product (manual inspection aid)
+    if products:
+        print("\n--- Structure of first product ---")
+        explore_structure(products[0])
 
-    # Step 3: Scrape daily value
+    # Step 3: Filter cohort
+    filtered_products = filter_products_with_sugar(products)
+    print(f"\nFiltered to {len(filtered_products)} products with sugar data.")
+
+    # Step 4: Scrape daily value
     daily_value_sugar_g = scrape_daily_value_sugar()
     print(f"Daily Value for sugar: {daily_value_sugar_g}")
 
-    # Step 4: Clean and engineer features
+    # Step 5: Clean and engineer features
     cleaned_records = clean_and_engineer(filtered_products, daily_value_sugar_g)
 
-    # Step 5: Join with warehouse log
+    # Step 6: Join with warehouse log
     joined_records = join_with_warehouse_log(cleaned_records)
 
-    # Step 6: Apply min-max scaling
+    # Step 7: Apply min-max scaling
     scaled_records = apply_min_max_scaling(joined_records)
 
-    # Step 7: Validation check
+    # Step 8: Validation check
     validation_check(scaled_records)
 
-    # Step 8: Write to CSV
+    # Step 9: Write to CSV
     write_to_csv(scaled_records)
 
     # Report ROI metric
